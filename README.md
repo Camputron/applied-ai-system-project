@@ -1,141 +1,97 @@
-# 🎵 Music Recommender Simulation
+# VibeFinder — AI-Powered Music Recommender
 
-## Project Summary
+## Base Project
 
-In this project you will build and explain a small music recommender system.
-
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-This simulation implements a content-based music recommender that scores songs against a user's taste profile using weighted proximity matching. Given an expanded catalog of 20 songs spanning 14 genres, it computes a similarity score for each track and returns the top recommendations with plain-language explanations of why each song was chosen.
+This project extends **Module 3: Music Recommender Simulation**, a content-based recommender that scored songs against hardcoded user profiles using weighted proximity matching. The original system worked well for predefined profiles but required users to manually specify genre, mood, energy, and acoustic preferences as structured data — there was no way to just *describe* what you wanted.
 
 ---
 
-## How The System Works
+## What's New
 
-Real-world recommenders like Spotify and YouTube Music combine two strategies: **collaborative filtering** (finding users with similar listening behavior and recommending what they enjoy) and **content-based filtering** (analyzing a song's audio features and metadata to find similar tracks). Our simulation focuses on the content-based approach, since we have a small catalog without multi-user interaction data.
+VibeFinder adds a **natural language interface** powered by a local LLM (Llama 3.2 via Ollama). Instead of hardcoding profiles, users describe their mood in plain English and the system handles the rest:
 
-### Data Flow
+1. **LLM Profile Extraction** — Ollama parses free-text input into a structured `UserProfile` (genre, mood, energy, acoustic preference, decade, mood tags, etc.) using structured prompting
+2. **Interactive Chat CLI** — A conversational loop where users can keep refining what they want
+3. **LLM-Generated Explanations** — After scoring, the LLM writes a friendly 3-5 sentence summary of why the recommended songs fit
 
-```mermaid
-flowchart LR
-    A["User Profile\n(genre, mood, energy,\nlikes_acoustic)"] --> C["Scoring Loop"]
-    B["songs.csv\n(20 songs)"] --> C
-    C -->|"score each song"| D["Scored List\n(song, score, explanation)"]
-    D -->|"sort descending\ntake top-k"| E["Top K\nRecommendations"]
-```
+The original recommender engine, scoring modes, diversity filter, and evaluation profiles are all preserved and still runnable via `python -m src.main`.
 
-The system works in two stages:
+---
 
-1. **Scoring Rule (per song)** — For each song, compute how well it matches the user's preferences using this formula:
+## Architecture
 
-   ```
-   total = (0.25 * genre_match)
-         + (0.20 * mood_match)
-         + (0.20 * energy_proximity)
-         + (0.15 * acousticness_score)
-         + (0.10 * danceability_proximity)
-         + (0.10 * valence_proximity)
-   ```
+![System Architecture](assets/architecture.png)
 
-   - **Categorical features** (genre, mood): score 1.0 on exact match, 0.0 otherwise.
-   - **Numeric features** (energy, danceability, valence): use proximity scoring `1 - |song_value - user_target|` so songs *closer* to the user's preference are rewarded, not just the highest or lowest values.
-   - **Acousticness**: if `likes_acoustic` is True, use `song.acousticness` directly; if False, use `1 - song.acousticness` (rewards electronic production).
+The system has five layers:
 
-2. **Ranking Rule (across catalog)** — Apply the scoring rule to every song, sort by score descending, return the top-k results with explanations.
-
-### Song Features
-
-Each `Song` object carries these attributes from `data/songs.csv`:
-
-| Feature | Type | Description |
+| Layer | File | Role |
 |---|---|---|
-| `genre` | categorical | Style category — now includes: pop, lofi, rock, ambient, jazz, synthwave, indie pop, hip-hop, classical, electronic, r&b, country, metal, reggae, folk, latin, blues |
-| `mood` | categorical | Emotional tone — now includes: happy, chill, intense, relaxed, moody, focused, romantic, nostalgic, aggressive, melancholy, sad |
-| `energy` | float 0–1 | Perceived intensity and activity level |
-| `tempo_bpm` | float 60–170 | Beats per minute (normalized to 0–1 for scoring) |
-| `valence` | float 0–1 | Musical positivity — happy/cheerful (high) vs. dark/sad (low) |
-| `danceability` | float 0–1 | How suitable the track is for dancing |
-| `acousticness` | float 0–1 | Acoustic vs. electronic production character |
+| **Chat CLI** | `src/chat.py` | User input loop, orchestrates the pipeline |
+| **LLM Layer** | `src/llm.py` | Ollama calls for profile extraction and explanation generation |
+| **Recommender Engine** | `src/recommender.py` | Weighted proximity scoring, ranking, diversity filter |
+| **Data Layer** | `data/songs.csv` | 20 songs across 14 genres with 15 features each |
+| **Output** | `src/main.py` | Formatted table display via tabulate |
 
-### UserProfile Preferences
-
-Each `UserProfile` stores four preference signals:
-
-| Field | Type | Maps To | Why It Matters |
-|---|---|---|---|
-| `favorite_genre` | string | Exact match against `Song.genre` | Gates the broadest stylistic preference |
-| `favorite_mood` | string | Exact match against `Song.mood` | Captures situational emotional intent |
-| `target_energy` | float 0–1 | Proximity score against `Song.energy` | Separates "chill lofi" (0.4) from "intense rock" (0.9) |
-| `likes_acoustic` | bool | Compared against `Song.acousticness` | Distinguishes organic from electronic production |
-
-**Can this profile differentiate "intense rock" from "chill lofi"?** Yes — these two archetypes differ on every field: genre (rock vs. lofi), mood (intense vs. chill), target_energy (0.9 vs. 0.4), and likes_acoustic (False vs. True). The profile provides four independent axes of separation, which is sufficient for a catalog of this size. A limitation is that users with mixed tastes (e.g., someone who likes *both* chill lofi and intense rock) cannot be fully represented with a single-preference profile.
-
-### Algorithm Recipe (Scoring Weights)
-
-| Feature | Weight | Points Equivalent | Rationale |
-|---|---|---|---|
-| Genre match | 0.25 | +2.5 pts | Strongest signal — genre loyalty is structural. A jazz fan rarely wants metal. |
-| Mood match | 0.20 | +2.0 pts | Core vibe indicator, but more situational than genre. |
-| Energy proximity | 0.20 | up to +2.0 pts | Primary numeric proxy for how a song *feels*. Gradual, not binary. |
-| Acousticness | 0.15 | up to +1.5 pts | Production style; maps directly to `likes_acoustic`. |
-| Danceability | 0.10 | up to +1.0 pts | Refines active vs. passive listening context. |
-| Valence | 0.10 | up to +1.0 pts | Positivity nuance; partially overlaps with mood. |
-| **Max possible** | **1.00** | **10.0 pts** | |
-
-### Expected Biases and Limitations
-
-- **Genre dominance**: At 25% weight, genre is the single strongest factor. A song that matches genre but misses on mood/energy can still outscore a perfect mood+energy match in a different genre. This mirrors real listener behavior (genre loyalty is strong) but can suppress cross-genre discovery.
-- **Single-preference profile**: The `UserProfile` stores one genre and one mood. Users with eclectic tastes (e.g., "chill lofi for studying, intense metal for workouts") are poorly served — the system can only optimize for one context at a time.
-- **Catalog bias**: With only 20 songs, some genres have just one representative. A user who prefers hip-hop will only ever get one strong match, regardless of how the weights are tuned.
-- **No temporal context**: The system doesn't know *when* the user is listening. Real recommenders adapt to time of day, activity, and recent listening history.
-- **Binary categorical matching**: Genre and mood are all-or-nothing (1.0 or 0.0). There's no notion of genre similarity (e.g., "indie pop" being close to "pop"), which penalizes near-misses as harshly as total mismatches.
-
-### CLI Output
-
-Below is a screenshot of the recommender running with the default pop/happy user profile:
-
-![CLI recommendations output](assets/phase3.png)
+**Data flow:** User types a natural-language request → LLM extracts a structured profile (JSON) → recommender scores all 20 songs using weighted proximity → diversity filter limits genre/artist repeats → table output displayed → LLM generates a conversational explanation.
 
 ---
 
 ## Getting Started
 
+### Prerequisites
+
+- Python 3.10+
+- [Ollama](https://ollama.com) installed and running
+
 ### Setup
 
-1. Create and activate a virtual environment:
+1. Clone and enter the repo:
+
+   ```bash
+   git clone https://github.com/Camputron/applied-ai-system-project.git
+   cd applied-ai-system-project
+   ```
+
+2. Create and activate a virtual environment:
 
    ```bash
    python3 -m venv env
-   source env/bin/activate      # Mac or Linux
+   source env/bin/activate      # Mac/Linux
    env\Scripts\activate         # Windows
    ```
 
-2. Install dependencies:
+3. Install dependencies:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the recommender (default **balanced** mode):
+4. Install and start Ollama, then pull the model:
 
    ```bash
-   python3 -m src.main
+   brew install ollama          # macOS
+   brew services start ollama
+   ollama pull llama3.2
    ```
 
-4. Run with a specific scoring mode:
+### Running the Chat Interface (New)
 
-   ```bash
-   python3 -m src.main genre-first
-   python3 -m src.main mood-first
-   python3 -m src.main energy-focused
-   ```
+```bash
+python -m src.chat
+```
 
-   Available modes: `balanced`, `genre-first`, `mood-first`, `energy-focused`.
+You can also specify a scoring mode:
+
+```bash
+python -m src.chat genre-first
+```
+
+### Running the Original Recommender
+
+```bash
+python -m src.main                # balanced mode (default)
+python -m src.main genre-first    # or: mood-first, energy-focused
+```
 
 ### Running Tests
 
@@ -145,45 +101,145 @@ PYTHONPATH=. pytest tests/test_recommender.py -v
 
 ---
 
-## Experiments You Tried
+## Sample Interactions
 
-Below is a recording of all 6 user profiles running through the recommender:
+### Example 1: Chill study session
 
-![All profile recommendations](assets/phase4.gif)
+```
+You: something chill for studying, not too loud
 
-### Weight Shift: Genre halved (0.25 to 0.125), Energy doubled (0.20 to 0.40)
+Extracted profile: {
+  favorite_genre: lofi,
+  favorite_mood: chill,
+  target_energy: 0.3,
+  likes_acoustic: False,
+  likes_instrumental: True
+}
 
-Key observations from the experiment:
+#1 Late Night Bars    (hip-hop/moody)     - 0.45
+#2 Night Drive Loop   (synthwave/moody)   - 0.44
+#3 Slow Honey         (r&b/romantic)      - 0.43
+#4 Bass Cathedral     (electronic/intense) - 0.43
+#5 Midnight Coding    (lofi/chill)        - 0.43
 
-- **High-Energy Pop profile:** Fuego Lento (latin, happy) jumped from #3 to #2, overtaking Gym Hero (pop, intense). With genre worth less, the perfect energy match (1.00) mattered more than pop loyalty. This made recommendations feel more "activity-based" — good for a workout playlist, but less genre-coherent.
-- **Deep Intense Rock profile:** Gym Hero (pop) closed the gap with Storm Runner (rock) significantly — from a 0.20 gap down to 0.08. The genre wall between pop and rock was nearly erased.
-- **Conflicted profile (blues, sad, energy 0.9):** Broken Strings stayed #1 but its lead shrank. High-energy songs from unrelated genres (Gym Hero, Fuego Lento) climbed into the top 5, pulled by the doubled energy weight. The system was "torn" between genre/mood loyalty and the energy target.
+"I'd recommend checking out 'Midnight Coding' by LoRoom — its mellow beats
+and soothing melody are perfect for a study session. If that's not quite
+right, 'Slow Honey' by Rielle or 'Night Drive Loop' by Neon Echo have a
+similar chill vibe that should help you concentrate."
+```
 
-**Conclusion:** The original weights favor genre-coherent recommendations. The experimental weights favor energy-coherent recommendations. Neither is objectively better — it depends on whether the user cares more about *what kind* of music they hear or *how it feels*.
+### Example 2: High-energy workout
 
-### Profile Comparisons
+```
+You: I need something intense for the gym, heavy beats
 
-- **High-Energy Pop vs. Chill Lofi:** These two profiles share zero overlap in their top 5. The pop profile gets Sunrise City (0.96) and Gym Hero (0.76); the lofi profile gets Library Rain (0.93) and Midnight Coding (0.91). This confirms the system can cleanly separate high-energy upbeat listeners from low-energy mellow listeners — the 4 preference axes (genre, mood, energy, acoustic) provide enough separation.
-- **Deep Intense Rock vs. High-Energy Pop:** Both profiles have high energy targets (0.9 and 0.8), yet their top results barely overlap. Storm Runner (#1 for rock) doesn't appear in pop's top 5, and Sunrise City (#1 for pop) drops to #4 for rock. Genre is the differentiator here — without it, these profiles would converge on the same high-energy songs.
-- **Middle of the Road vs. Chill Lofi:** The R&B profile (energy 0.5) and lofi profile (energy 0.4) are only 0.1 apart on energy, yet produce completely different top 5 lists. Genre and mood do the heavy lifting — the system doesn't just sort by energy.
+Extracted profile: {
+  favorite_genre: electronic,
+  favorite_mood: intense,
+  target_energy: 0.9,
+  likes_acoustic: False
+}
+
+#1 Bass Cathedral    (electronic/intense)  - 0.82
+#2 Gym Hero          (pop/intense)         - 0.72
+#3 Storm Runner      (rock/intense)        - 0.68
+#4 Iron Lung         (metal/aggressive)    - 0.62
+#5 Fuego Lento       (latin/happy)         - 0.55
+
+"Bass Cathedral is your top pick here — it's pure electronic intensity at
+0.95 energy with heavy, driving beats. Gym Hero and Storm Runner round out
+the set with aggressive, high-energy vibes perfect for pushing through
+that last set."
+```
+
+### Example 3: Nostalgic acoustic evening
+
+```
+You: something warm and acoustic, like sitting by a campfire
+
+Extracted profile: {
+  favorite_genre: folk,
+  favorite_mood: nostalgic,
+  target_energy: 0.35,
+  likes_acoustic: True
+}
+
+#1 Cabin Hymn        (folk/melancholy)     - 0.72
+#2 Broken Strings    (blues/sad)           - 0.65
+#3 Coffee Shop Stories (jazz/relaxed)      - 0.63
+#4 Dust Road         (country/nostalgic)   - 0.60
+#5 Library Rain      (lofi/chill)          - 0.55
+
+"Cabin Hymn by Ember Folk is exactly the vibe — intimate, bittersweet, and
+deeply organic. Broken Strings and Coffee Shop Stories add a raw, soulful
+quality that pairs beautifully with that campfire feeling."
+```
+
+---
+
+## Design Decisions
+
+- **Local LLM (Ollama) over cloud APIs**: No API keys, no rate limits, no cost. Runs entirely on the user's machine. Llama 3.2 (2GB) is small enough for any modern Mac while being capable enough for JSON extraction and short summaries.
+- **Structured prompting for profile extraction**: The LLM is constrained to output a fixed JSON schema with validated fields. Invalid genres/moods fall back to defaults, numeric values are clamped to valid ranges. This keeps the recommender's behavior predictable even when the LLM makes mistakes.
+- **Separation of concerns**: The LLM layer (`llm.py`) only handles natural language ↔ structured data translation. The scoring logic in `recommender.py` is untouched — it doesn't know or care that an LLM is involved. This means the original `main.py` with hardcoded profiles still works exactly as before.
+- **Diversity filter**: The recommender limits results to 2 songs per genre and 1 per artist to prevent the top-k from clustering around a single genre match.
+
+### Trade-offs
+
+- **Ollama requires local setup**: Users must install Ollama and pull a model (~2GB download). This is more friction than a cloud API, but eliminates the recurring cost and rate-limit problems.
+- **Small model = occasional parsing errors**: Llama 3.2 (3B params) sometimes produces malformed JSON or picks an unexpected genre. The validation layer in `extract_profile()` catches most of these, but edge cases exist.
+- **No conversation memory**: Each chat turn is independent — the system doesn't remember what you asked before. A "more like that but sadder" follow-up won't work.
+
+---
+
+## Experiments and Testing
+
+### Profile Evaluation (6 profiles, original recommender)
+
+| Profile | Top Result | Score | Correct? |
+|---|---|---|---|
+| High-Energy Pop | Sunrise City (pop/happy) | 0.96 | Yes |
+| Chill Lofi | Library Rain (lofi/chill) | 0.93 | Yes |
+| Deep Intense Rock | Storm Runner (rock/intense) | 0.92 | Yes |
+| Conflicted: High Energy + Sad | Broken Strings (blues/sad) | 0.80 | Partial — energy mismatch |
+| Genre Orphan (k-pop) | Sunrise City (pop/happy) | 0.68 | Reasonable fallback |
+| Middle of the Road (r&b) | Slow Honey (r&b/romantic) | 0.90 | Yes |
+
+### Weight Experiment: Genre halved, Energy doubled
+
+Halving genre weight (0.25 → 0.125) and doubling energy (0.20 → 0.40) reshuffled rankings significantly:
+- Fuego Lento (latin) overtook Gym Hero (pop) for the pop profile — energy proximity mattered more than genre loyalty
+- Gym Hero closed the gap with Storm Runner for the rock profile — the genre wall between pop and rock nearly disappeared
+- High-energy songs from unrelated genres climbed into the "Conflicted" profile's top 5
+
+**Conclusion:** Original weights favor genre-coherent results. Experimental weights favor energy-coherent results. The right choice depends on whether users care more about *what kind* of music or *how it feels*.
+
+### LLM Parsing Reliability
+
+Tested the natural language → profile extraction across varied inputs:
+- Clear requests ("chill lofi for studying") → parsed correctly and consistently
+- Ambiguous requests ("something that makes me feel things") → reasonable defaults chosen
+- Adversarial inputs ("play me some K-pop bangers") → falls back to closest genre match (pop)
 
 ---
 
 ## Limitations and Risks
 
-- **Tiny catalog (20 songs):** Most genres have only one representative, so there is zero within-genre variety. A blues fan always gets Broken Strings at #1.
-- **Binary categorical matching:** "Indie pop" and "pop" score 0 similarity. There is no concept of genre distance, so near-misses are penalized as harshly as total mismatches.
-- **Mood labels carry energy assumptions:** "Sad" is paired with low energy (blues, 0.48) in the data, but intense sad music exists (dark electronic, heavy emo). The system can't find what isn't labeled.
-- **Single-preference profile:** Users with mixed or contextual tastes (chill lofi for studying, metal for the gym) can only be served one context at a time.
-- **No lyric, language, or cultural understanding:** The system treats songs as numeric vectors. It doesn't know that "Coffee Shop Stories" is in English or that "Fuego Lento" implies a Spanish-language track.
+- **Tiny catalog (20 songs):** Most genres have one representative. A blues fan always gets Broken Strings at #1.
+- **Binary categorical matching:** "Indie pop" and "pop" score 0 similarity. No concept of genre distance.
+- **LLM hallucination risk:** The model might extract preferences that don't reflect what the user actually wanted. The validation layer mitigates this but can't eliminate it.
+- **Single-turn conversations:** No memory between turns. Users can't refine recommendations iteratively.
+- **English-only:** The LLM prompt and catalog metadata assume English input.
+- **No audio analysis:** Song features are hand-assigned, not derived from actual audio signals.
 
 ---
 
 ## Reflection
 
-[**Model Card**](model_card.md)
+See [Model Card](model_card.md) for detailed evaluation, bias analysis, and personal reflection.
 
-Recommenders turn data into predictions by reducing each song and user to a set of comparable numbers, then using a distance or similarity formula to rank every option. The scoring formula is deceptively simple — multiply, subtract, add — but the *weights* control everything. Doubling energy's weight completely reshuffled rankings even though the underlying data didn't change. This means whoever chooses the weights has enormous power over what users see, which is an invisible form of editorial control.
+---
 
-Bias shows up at multiple levels: in the data (which genres are represented, who assigned the mood labels), in the features (what gets measured and what doesn't), and in the weights (what the system prioritizes). The "Conflicted: High Energy + Sad" experiment was the clearest example — the system couldn't serve this user well not because the algorithm is broken, but because the dataset assumes sadness is quiet. In a real product with millions of users, these small assumptions scale into systematic blind spots that shape what entire communities of listeners are exposed to.
+## Demo
 
+![All profile recommendations](assets/phase4.gif)
