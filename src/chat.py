@@ -1,15 +1,24 @@
-"""Interactive chat CLI that uses Gemini to parse preferences and explain results."""
+"""Interactive chat CLI that uses Ollama to parse preferences and explain results."""
 
+import logging
 import sys
 
 from src.recommender import load_songs, recommend_songs, SCORING_MODES
 from src.llm import extract_profile, explain_recommendations
 from src.main import run_profile_table
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 
 def chat() -> None:
     """Run an interactive loop: user describes taste -> system recommends."""
     songs = load_songs("data/songs.csv")
+    logger.info("Loaded %d songs from catalog", len(songs))
     print(f"Loaded {len(songs)} songs.")
     print("Describe what you want to listen to (or type 'quit' to exit).\n")
 
@@ -31,19 +40,28 @@ def chat() -> None:
             print("Bye!")
             break
 
+        logger.info("User input: %s", user_input)
+
         # Step 1: LLM extracts structured profile
         print("\nParsing your preferences...")
         try:
             profile = extract_profile(user_input)
         except Exception as e:
+            logger.error("Profile extraction failed: %s", e)
             print(f"Error parsing preferences: {e}")
             print("Try describing your taste differently.\n")
             continue
 
-        print(f"Extracted profile: {profile}\n")
+        confidence = profile.pop("_confidence", 0.0)
+        print(f"Extracted profile (confidence: {confidence:.0%}): {profile}\n")
+
+        if confidence < 0.5:
+            logger.warning("Low confidence (%.0f%%), results may be unreliable", confidence * 100)
+            print("Warning: Low parsing confidence. Results may not match your intent.\n")
 
         # Step 2: Run the existing recommender
         results = recommend_songs(profile, songs, k=5, mode=mode, diverse=True)
+        logger.info("Recommender returned %d results", len(results))
 
         # Step 3: Show the table
         run_profile_table("Your Taste", profile, songs, mode=mode)
@@ -54,6 +72,7 @@ def chat() -> None:
             explanation = explain_recommendations(user_input, results)
             print(f"\n{explanation}\n")
         except Exception as e:
+            logger.error("Explanation generation failed: %s", e)
             print(f"(Could not generate explanation: {e})\n")
 
 
