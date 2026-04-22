@@ -242,4 +242,14 @@ See [Model Card](model_card.md) for detailed evaluation, bias analysis, and pers
 
 ## Demo
 
+> Loom video walkthrough: *[link to be added after recording]*
+
 ![All profile recommendations](assets/phase4.gif)
+
+---
+
+## Portfolio
+
+**GitHub:** [github.com/Camputron/applied-ai-system-project](https://github.com/Camputron/applied-ai-system-project)
+
+**What this project says about me as an AI engineer:** Building VibeFinder taught me that integrating an LLM into an existing system is less about the AI itself and more about the boundaries you design around it. The hardest part wasn't getting Llama 3.2 to return JSON — it was deciding what to do when the JSON was valid but semantically wrong. I learned to separate structural validation (does it parse?) from semantic validation (does it make sense?), and to show users enough of the system's reasoning that they can catch mistakes the guardrails miss. This project reflects my approach to AI engineering: use the simplest tool that works, make the system's decisions transparent, and test not just whether it runs but whether it's actually right.
