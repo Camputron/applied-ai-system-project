@@ -1,0 +1,47 @@
+flowchart TD
+    subgraph CLI["Chat CLI (src/chat.py)"]
+        A["User Input\n(natural language)"]
+    end
+
+    subgraph LLM["LLM Layer (src/llm.py)"]
+        B["Ollama / Llama 3.2\n(localhost:11434)"]
+        B1["extract_profile()\nStructured Prompting"]
+        B2["explain_recommendations()\nNatural Language Summary"]
+    end
+
+    subgraph ENGINE["Recommender Engine (src/recommender.py)"]
+        C["load_songs()\nParse CSV"]
+        D["score_song()\nWeighted Proximity Matching"]
+        E["recommend_songs()\nRank + Diversity Filter"]
+    end
+
+    subgraph DATA["Data Layer"]
+        F[("data/songs.csv\n20 songs, 15 features")]
+    end
+
+    subgraph OUTPUT["Output"]
+        G["Formatted Table\n(tabulate)"]
+        H["LLM Explanation\n(3-5 sentences)"]
+    end
+
+    A -->|"free-text request"| B1
+    B1 -->|"prompt"| B
+    B -->|"JSON profile"| B1
+    B1 -->|"structured UserProfile"| E
+    F -->|"song catalog"| C
+    C -->|"List[Dict]"| E
+    E -->|"scored + filtered top-k"| D
+    D -->|"(score, reasons) per song"| E
+    E -->|"top 5 results"| G
+    E -->|"top 5 results"| B2
+    B2 -->|"prompt"| B
+    B -->|"summary text"| B2
+    B2 --> H
+    G --> CLI
+    H --> CLI
+
+    style CLI fill:#e8f4f8,stroke:#2196F3
+    style LLM fill:#fff3e0,stroke:#FF9800
+    style ENGINE fill:#e8f5e9,stroke:#4CAF50
+    style DATA fill:#f3e5f5,stroke:#9C27B0
+    style OUTPUT fill:#fce4ec,stroke:#E91E63
