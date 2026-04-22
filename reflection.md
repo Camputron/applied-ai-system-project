@@ -1,21 +1,31 @@
-# Reflection: Profile Comparisons
+# Reflection: VibeFinder 2.0
 
-## High-Energy Pop vs. Chill Lofi
+## Limitations and Biases
 
-These two profiles produce completely non-overlapping top 5 lists. The pop profile leads with Sunrise City (0.96) — a bright, upbeat track — while the lofi profile leads with Library Rain (0.93) — a mellow, acoustic study track. This makes sense because the profiles differ on all four axes: genre (pop vs. lofi), mood (happy vs. chill), energy (0.8 vs. 0.4), and acoustic preference (electronic vs. acoustic). The system has no trouble telling these listeners apart, which confirms that four preference dimensions are enough to separate clearly distinct tastes.
+The biggest bias lives in the data, not the algorithm. The 20-song catalog is Western-centric — no K-pop, Afrobeats, or Bollywood. Users who request these genres get silently funneled toward the closest Western match (e.g., K-pop → pop). In a real product, this would be a form of cultural erasure at scale.
 
-## Deep Intense Rock vs. High-Energy Pop
+The LLM introduces a second layer of bias: it interprets ambiguous requests through whatever patterns Llama 3.2 learned during training. "Something sad" might default to blues rather than emo or dark electronic because the model associates sadness with certain genres. The user never sees this interpretation step unless they read the extracted profile.
 
-Both profiles target high energy (0.9 and 0.8), yet their top results barely overlap. Storm Runner dominates the rock profile at #1 (0.92), but doesn't even appear in the pop top 5. Meanwhile, Sunrise City is #1 for pop (0.96) but drops to #4 for rock (0.49). Genre is doing the heavy lifting here — without it, both profiles would converge on the same cluster of high-energy songs. This shows why genre carries the highest weight: it prevents the system from treating all energetic listeners as interchangeable.
+Binary categorical matching (genre and mood are all-or-nothing) means near-misses are penalized as harshly as total mismatches. "Indie pop" and "pop" score 0 similarity. This creates a rigid genre boundary that real listeners don't experience.
 
-## Conflicted Profile (High Energy + Sad) vs. Chill Lofi
+## Misuse Potential
 
-The conflicted profile asks for blues, sad mood, and energy 0.9 — a combination that doesn't naturally exist in the catalog (Broken Strings is blues/sad but only 0.48 energy). Broken Strings still wins at #1 (0.80) because genre+mood together (0.45) outweigh the energy penalty. Compared to the Chill Lofi profile, which gets near-perfect matches across all features, the conflicted profile exposes how the system handles tension between categorical and numeric preferences. It prioritizes "what kind of music" over "how it should feel," which may not be the right call for someone who wants intense, emotionally heavy music.
+This system is a classroom demo, but the *pattern* it demonstrates — LLM parsing user intent into structured data for automated decisions — has real misuse potential:
 
-## Genre Orphan (K-pop) vs. High-Energy Pop
+- **Manipulative recommendations.** If weights were tuned to favor sponsored content rather than user preference, the natural language interface would make the manipulation invisible. Users would trust the system because it "understood" them.
+- **Profiling without consent.** The free-text input reveals more about a user than a structured form would. "I'm feeling down after a breakup" contains emotional state information that could be stored and exploited.
+- **False confidence.** The 99% confidence score creates a veneer of reliability that masks semantic errors. A user seeing "confidence: 100%" might trust wrong recommendations.
 
-The k-pop profile can never get a genre match (no k-pop songs exist in the catalog), so it loses 0.25 points on every song. Its top result, Sunrise City (0.68), is the same as the pop profile's #1 — but scores 0.28 points lower because of the missing genre bonus. This reveals how the system degrades gracefully for unknown genres: it falls back on mood, energy, and production style. But it also means k-pop fans are silently funneled toward pop music, which could feel like erasure if this were a real product.
+**Mitigation:** Show the extracted profile to the user (we do this), let them correct it before scoring (we don't do this yet), and never store free-text inputs beyond the current session.
 
-## Middle of the Road (R&B) vs. Deep Intense Rock
+## What Surprised Me During Testing
 
-The R&B profile (energy 0.5) and rock profile (energy 0.9) sit at opposite ends of the energy spectrum. Slow Honey leads for R&B with a near-perfect 0.90 — it's the only r&b track so genre+mood lock it in. For rock, Storm Runner leads at 0.92. What's interesting is the score gap between #1 and #5: it's 0.48 for R&B but only 0.44 for rock. The moderate energy target (0.5) compresses scores because most songs fall within a reasonable distance, while the extreme target (0.9) creates sharper separation. Moderate preferences are harder for the system to rank decisively.
+The evaluation harness showed that the LLM gets genre and mood right almost every time — but consistently overestimates energy for calm requests. "Classical piano, elegant and calm" was parsed with energy 0.80. The model seems to have a bias toward mid-to-high energy values regardless of context.
+
+The other surprise was that 100% confidence and wrong answers can coexist. The confidence metric validates *structure* (valid JSON, correct types, in-range values) but not *meaning*. Three of the eight test cases had 100% confidence but failed semantic checks. This is a real lesson about evaluation metrics: measuring what's easy to measure (format compliance) instead of what matters (did the user get what they wanted).
+
+## AI Collaboration
+
+**Helpful suggestion:** The structured prompting approach for profile extraction — constraining the LLM to output a fixed JSON schema with enumerated valid values — was suggested during development. This made the output predictable and parseable, and the validation layer could catch deviations. Without this, the LLM would return free-form text that would be much harder to feed into the recommender.
+
+**Flawed suggestion:** The initial evaluation harness design only checked whether the LLM returned valid JSON with correct types — essentially duplicating what the confidence score already measures. It didn't test whether the *values* made sense for the input. I had to add the expected-value checks (e.g., "chill for studying" should produce energy < 0.5) myself, because the AI optimized for "does it run" rather than "does it work correctly." This is a pattern I noticed throughout: AI is good at structural correctness but needs human judgment for semantic correctness.
