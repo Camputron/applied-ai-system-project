@@ -3,9 +3,9 @@
 import logging
 import sys
 
-from src.recommender import load_songs, recommend_songs, SCORING_MODES
-from src.llm import extract_profile, explain_recommendations
+from src.llm import explain_recommendations, extract_profile
 from src.main import run_profile_table
+from src.recommender import SCORING_MODES, load_songs, recommend_songs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,6 +13,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+FAREWELL = "Goodbye World!"
 
 
 def chat() -> None:
@@ -31,13 +33,13 @@ def chat() -> None:
         try:
             user_input = input("You: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nBye!")
+            print(f"\{FAREWELL}")
             break
 
         if not user_input:
             continue
         if user_input.lower() in ("quit", "exit", "q"):
-            print("Bye!")
+            print(FAREWELL)
             break
 
         logger.info("User input: %s", user_input)
@@ -45,7 +47,7 @@ def chat() -> None:
         # Step 1: LLM extracts structured profile
         print("\nParsing your preferences...")
         try:
-            profile = extract_profile(user_input)
+            profile = extract_profile(user_input, use_few_shot=True)
         except Exception as e:
             logger.error("Profile extraction failed: %s", e)
             print(f"Error parsing preferences: {e}")
@@ -56,8 +58,12 @@ def chat() -> None:
         print(f"Extracted profile (confidence: {confidence:.0%}): {profile}\n")
 
         if confidence < 0.5:
-            logger.warning("Low confidence (%.0f%%), results may be unreliable", confidence * 100)
-            print("Warning: Low parsing confidence. Results may not match your intent.\n")
+            logger.warning(
+                "Low confidence (%.0f%%), results may be unreliable", confidence * 100
+            )
+            print(
+                "Warning: Low parsing confidence. Results may not match your intent.\n"
+            )
 
         # Step 2: Run the existing recommender
         results = recommend_songs(profile, songs, k=5, mode=mode, diverse=True)

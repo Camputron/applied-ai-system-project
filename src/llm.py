@@ -17,7 +17,7 @@ def _generate(prompt: str) -> str:
     logger.debug("Prompt: %s", prompt[:200])
     resp = requests.post(
         OLLAMA_URL,
-        json={"model": MODEL, "prompt": prompt, "stream": False},
+        json={"model": MODEL, "prompt": prompt, "stream": False, "options": {"num_ctx": 4096}},
         timeout=120,
     )
     resp.raise_for_status()
@@ -68,14 +68,56 @@ make your best guess. Do NOT add extra keys or commentary outside the JSON.
 User request: {user_input}
 """
 
+FEW_SHOT_EXTRACT_PROFILE_PROMPT = """\
+You are a music preference parser. Given a user's natural-language description
+of what they want to listen to, extract a structured JSON profile.
 
-def extract_profile(user_input: str) -> dict:
+Return ONLY valid JSON with these exact keys:
+{{
+  "favorite_genre": one of {genres},
+  "favorite_mood": one of {moods},
+  "target_energy": float 0.0-1.0,
+  "likes_acoustic": boolean,
+  "min_popularity": int 0-100 (default 0),
+  "preferred_decade": string like "2020s" or "" if unspecified,
+  "mood_tag_preferences": list of 1-3 short adjective strings,
+  "likes_instrumental": boolean (default false),
+  "likes_live": boolean (default false)
+}}
+
+Pick the CLOSEST match from the allowed values. Do NOT add extra keys or commentary.
+
+Here are some examples:
+
+User request: quiet classical piano, calm and reflective
+{{"favorite_genre":"classical","favorite_mood":"relaxed","target_energy":0.20,"likes_acoustic":true,"min_popularity":0,"preferred_decade":"","mood_tag_preferences":["serene","contemplative","gentle"],"likes_instrumental":true,"likes_live":false}}
+
+User request: hard-hitting EDM for a rave, maximum energy
+{{"favorite_genre":"electronic","favorite_mood":"intense","target_energy":0.95,"likes_acoustic":false,"min_popularity":0,"preferred_decade":"2020s","mood_tag_preferences":["euphoric","heavy","driving"],"likes_instrumental":false,"likes_live":true}}
+
+User request: indie pop for a Sunday afternoon walk
+{{"favorite_genre":"indie pop","favorite_mood":"happy","target_energy":0.50,"likes_acoustic":false,"min_popularity":0,"preferred_decade":"","mood_tag_preferences":["uplifting","bright","carefree"],"likes_instrumental":false,"likes_live":false}}
+
+User request: melancholic jazz on a rainy evening
+{{"favorite_genre":"jazz","favorite_mood":"melancholy","target_energy":0.30,"likes_acoustic":true,"min_popularity":0,"preferred_decade":"","mood_tag_preferences":["intimate","bittersweet","warm"],"likes_instrumental":false,"likes_live":false}}
+
+User request: aggressive metal, headbanging stuff
+{{"favorite_genre":"metal","favorite_mood":"aggressive","target_energy":0.90,"likes_acoustic":false,"min_popularity":0,"preferred_decade":"","mood_tag_preferences":["brutal","raw","powerful"],"likes_instrumental":false,"likes_live":true}}
+
+Now parse this new request:
+
+User request: {user_input}
+"""
+
+
+def extract_profile(user_input: str, use_few_shot: bool = False) -> dict:
     """Use Ollama to parse a natural-language request into a UserProfile dict.
 
     Returns a dict with profile fields plus a '_confidence' key (0.0-1.0)
     indicating how many fields the LLM got right without fallback correction.
     """
-    prompt = EXTRACT_PROFILE_PROMPT.format(
+    template = FEW_SHOT_EXTRACT_PROFILE_PROMPT if use_few_shot else EXTRACT_PROFILE_PROMPT
+    prompt = template.format(
         genres=VALID_GENRES,
         moods=VALID_MOODS,
         user_input=user_input,
