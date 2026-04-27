@@ -96,7 +96,7 @@ python -m src.main genre-first    # or: mood-first, energy-focused
 ### Running Tests
 
 ```bash
-PYTHONPATH=. pytest tests/test_recommender.py -v
+PYTHONPATH=python -m tests.test_recommender
 ```
 
 ---
@@ -221,6 +221,22 @@ Tested the natural language → profile extraction across varied inputs:
 - Ambiguous requests ("something that makes me feel things") → reasonable defaults chosen
 - Adversarial inputs ("play me some K-pop bangers") → falls back to closest genre match (pop)
 
+### Evaluation Harness — Zero-Shot vs Few-Shot
+
+`tests/test_evaluation.py` runs 8 predefined inputs through both modes and prints a side-by-side comparison. Across multiple runs, both modes land around **~90% checks-passed** with **~95%+ average confidence** and **~1.7s per request**.
+
+Few-shot does *not* produce a consistent accuracy lift over zero-shot on this constrained schema — the validation layer (`extract_profile()` in `src/llm.py`) does most of the heavy lifting in both modes by clamping numeric values and falling back when the LLM picks an out-of-vocabulary genre or mood. Few-shot examples produce *different* outputs (different mood-tag wording, more frequent decade detection on inputs like "retro 80s synthwave"), but headline accuracy is comparable.
+
+**Why the harness intentionally reports partial passes**
+
+The test cases assert against a *specific* expected mood and a narrow energy range for each input, but several inputs are genuinely ambiguous — "warm acoustic folk, campfire vibes" can defensibly parse as `nostalgic`, `relaxed`, or `melancholy`; "happy upbeat pop for a road trip" can defensibly land anywhere from energy 0.5 to 1.0. Loosening the test ranges would push the score to 100% but would hide a real property of the system: which interpretation Llama 3.2 prefers for borderline phrasing.
+
+The harness is deliberately strict so the partial-pass output surfaces this divergence rather than papering over it. The `PARTIAL` rows are not bugs — they're the harness doing its job, showing where LLM interpretation diverges from one specific expected answer.
+
+**Other reliability behavior the harness exercises:**
+- Occasional malformed JSON from the LLM is handled by a one-shot retry in `extract_profile()` so a single bad response degrades gracefully instead of erroring
+- Out-of-vocabulary genres/moods fall back to safe defaults rather than crashing the recommender
+
 ---
 
 ## Limitations and Risks
@@ -242,9 +258,9 @@ See [Model Card](model_card.md) for detailed evaluation, bias analysis, and pers
 
 ## Demo
 
-> Loom video walkthrough: *[link to be added after recording]*
+> Loom video walkthrough: *[https://www.loom.com/share/1030d730173740099d0ca17db9bf26aa]*
 
-![All profile recommendations](assets/phase4.gif)
+<!-- ![All profile recommendations](assets/phase4.gif) -->
 
 ---
 

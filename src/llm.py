@@ -122,16 +122,21 @@ def extract_profile(user_input: str, use_few_shot: bool = False) -> dict:
         moods=VALID_MOODS,
         user_input=user_input,
     )
-    text = _generate(prompt)
+    def _generate_and_clean() -> str:
+        raw = _generate(prompt)
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1]
+        if raw.endswith("```"):
+            raw = raw.rsplit("```", 1)[0]
+        return raw.strip()
 
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1]
-    if text.endswith("```"):
-        text = text.rsplit("```", 1)[0]
-    text = text.strip()
-
-    profile = json.loads(text)
+    text = _generate_and_clean()
+    try:
+        profile = json.loads(text)
+    except json.JSONDecodeError as e:
+        logger.warning("JSON parse failed (%s), retrying once", e)
+        text = _generate_and_clean()
+        profile = json.loads(text)
     logger.info("Parsed JSON profile successfully")
 
     # --- Confidence scoring ---

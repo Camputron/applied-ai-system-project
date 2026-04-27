@@ -33,13 +33,13 @@ def chat() -> None:
         try:
             user_input = input("You: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print(f"\{FAREWELL}")
+            print(f'\n{FAREWELL}')
             break
 
         if not user_input:
             continue
         if user_input.lower() in ("quit", "exit", "q"):
-            print(FAREWELL)
+            print(f'{FAREWELL}')
             break
 
         logger.info("User input: %s", user_input)
