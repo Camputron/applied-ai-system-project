@@ -96,7 +96,7 @@ python -m src.main genre-first    # or: mood-first, energy-focused
 ### Running Tests
 
 ```bash
-PYTHONPATH=python -m tests.test_recommender
+python -m tests.test_recommender
 ```
 
 ---
